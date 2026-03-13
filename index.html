@@ -1,0 +1,960 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AltGen — AI Alt Text Generator</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0c0e10;
+    --surface: #13161a;
+    --surface2: #1c2026;
+    --border: #252a32;
+    --accent: #00e5a0;
+    --accent2: #0099ff;
+    --warn: #ff6b35;
+    --text: #e8eaed;
+    --muted: #6b7280;
+    --success: #00e5a0;
+    --error: #ff4757;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Background grid */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,229,160,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,229,160,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .glow {
+    position: fixed;
+    width: 600px; height: 600px;
+    border-radius: 50%;
+    filter: blur(120px);
+    pointer-events: none;
+    z-index: 0;
+  }
+  .glow-1 { background: rgba(0,229,160,0.07); top: -200px; right: -100px; }
+  .glow-2 { background: rgba(0,153,255,0.05); bottom: -200px; left: -100px; }
+
+  /* Layout */
+  .wrapper { position: relative; z-index: 1; max-width: 960px; margin: 0 auto; padding: 0 24px 60px; }
+
+  /* Header */
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 28px 0 40px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 40px;
+  }
+  .logo {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800; font-size: 22px;
+    letter-spacing: -0.5px;
+  }
+  .logo span { color: var(--accent); }
+  .badge {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px; font-weight: 500;
+    color: var(--accent);
+    background: rgba(0,229,160,0.1);
+    border: 1px solid rgba(0,229,160,0.25);
+    padding: 4px 10px; border-radius: 20px;
+    letter-spacing: 0.5px;
+  }
+  .gh-link {
+    display: flex; align-items: center; gap: 6px;
+    font-family: 'DM Mono', monospace;
+    font-size: 12px; color: var(--muted);
+    text-decoration: none;
+    border: 1px solid var(--border);
+    padding: 5px 12px; border-radius: 8px;
+    transition: all 0.2s;
+  }
+  .gh-link:hover { color: var(--accent); border-color: var(--accent); }
+
+  /* API Key Section */
+  .api-section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 24px;
+    margin-bottom: 28px;
+    animation: fadeUp 0.4s ease both;
+  }
+  .section-label {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px; font-weight: 500;
+    color: var(--muted);
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+  .key-row { display: flex; gap: 10px; align-items: center; }
+  .key-input {
+    flex: 1;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 11px 16px;
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .key-input:focus { border-color: var(--accent); }
+  .key-input::placeholder { color: var(--muted); }
+  .key-status {
+    font-size: 12px; color: var(--muted);
+    margin-top: 8px;
+    font-family: 'DM Mono', monospace;
+  }
+  .key-status.ok { color: var(--accent); }
+  .key-status.err { color: var(--error); }
+
+  /* Upload Section */
+  .upload-section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 32px;
+    margin-bottom: 28px;
+    animation: fadeUp 0.4s 0.1s ease both;
+  }
+  .drop-zone {
+    border: 2px dashed var(--border);
+    border-radius: 10px;
+    padding: 40px 24px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+  }
+  .drop-zone:hover, .drop-zone.drag-over {
+    border-color: var(--accent);
+    background: rgba(0,229,160,0.04);
+  }
+  .drop-zone input[type=file] {
+    position: absolute; inset: 0;
+    opacity: 0; cursor: pointer; width: 100%; height: 100%;
+  }
+  .drop-icon {
+    font-size: 36px; margin-bottom: 12px; display: block;
+    filter: grayscale(1);
+    transition: filter 0.2s;
+  }
+  .drop-zone:hover .drop-icon { filter: none; }
+  .drop-title {
+    font-family: 'Syne', sans-serif;
+    font-weight: 700; font-size: 16px;
+    margin-bottom: 6px;
+  }
+  .drop-sub { color: var(--muted); font-size: 13px; }
+  .drop-sub em {
+    color: var(--accent); font-style: normal;
+    font-family: 'DM Mono', monospace; font-size: 12px;
+  }
+
+  /* Preview table */
+  .preview-wrap {
+    margin-top: 20px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    display: none;
+  }
+  .preview-wrap.visible { display: block; }
+  .preview-header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .preview-title {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px; color: var(--muted);
+    letter-spacing: 1px;
+  }
+  .row-count {
+    font-family: 'DM Mono', monospace;
+    font-size: 12px; color: var(--accent);
+    background: rgba(0,229,160,0.1);
+    padding: 3px 10px; border-radius: 20px;
+  }
+  .table-scroll { max-height: 200px; overflow-y: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th {
+    text-align: left; padding: 8px 14px;
+    font-family: 'DM Mono', monospace;
+    color: var(--muted); font-weight: 400;
+    font-size: 10px; letter-spacing: 1px;
+    background: var(--surface2);
+    position: sticky; top: 0;
+  }
+  td { padding: 8px 14px; border-top: 1px solid var(--border); color: var(--muted); }
+  td:first-child { color: var(--text); font-size: 11px; font-family: 'DM Mono', monospace; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  td.alt-cell { color: var(--accent); font-style: italic; }
+  td.pending { color: var(--border); }
+  td.error-cell { color: var(--error); font-size: 11px; }
+
+  /* Run section */
+  .run-section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 24px;
+    margin-bottom: 28px;
+    animation: fadeUp 0.4s 0.2s ease both;
+  }
+  .run-options { display: flex; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
+  .opt-label {
+    display: flex; flex-direction: column; gap: 6px;
+    font-size: 12px; color: var(--muted);
+    font-family: 'DM Mono', monospace;
+  }
+  .opt-label select, .opt-label input[type=number] {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    padding: 8px 12px;
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    outline: none;
+    min-width: 160px;
+    transition: border-color 0.2s;
+  }
+  .opt-label select:focus, .opt-label input:focus { border-color: var(--accent); }
+
+  /* Buttons */
+  .btn {
+    font-family: 'Syne', sans-serif;
+    font-weight: 700; font-size: 14px;
+    padding: 12px 28px; border-radius: 8px;
+    border: none; cursor: pointer;
+    transition: all 0.2s; letter-spacing: 0.3px;
+  }
+  .btn-primary {
+    background: var(--accent); color: #0c0e10;
+    box-shadow: 0 0 24px rgba(0,229,160,0.25);
+  }
+  .btn-primary:hover:not(:disabled) {
+    background: #00ffb3;
+    box-shadow: 0 0 32px rgba(0,229,160,0.4);
+    transform: translateY(-1px);
+  }
+  .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; transform: none; box-shadow: none; }
+  .btn-secondary {
+    background: var(--surface2); color: var(--text);
+    border: 1px solid var(--border);
+  }
+  .btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+  .btn-sm { padding: 8px 16px; font-size: 12px; }
+
+  .btn-row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+
+  /* Progress */
+  .progress-section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 24px;
+    margin-bottom: 28px;
+    display: none;
+    animation: fadeUp 0.3s ease both;
+  }
+  .progress-section.visible { display: block; }
+  .progress-stats {
+    display: flex; gap: 24px; margin-bottom: 20px; flex-wrap: wrap;
+  }
+  .stat {
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .stat-val {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800; font-size: 28px;
+    line-height: 1;
+  }
+  .stat-val.accent { color: var(--accent); }
+  .stat-val.warn { color: var(--warn); }
+  .stat-val.err { color: var(--error); }
+  .stat-label { font-size: 11px; color: var(--muted); font-family: 'DM Mono', monospace; letter-spacing: 0.5px; }
+
+  .progress-bar-wrap {
+    background: var(--surface2);
+    border-radius: 100px; height: 6px;
+    margin-bottom: 16px; overflow: hidden;
+  }
+  .progress-bar {
+    height: 100%; border-radius: 100px;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    transition: width 0.4s ease;
+    box-shadow: 0 0 12px rgba(0,229,160,0.5);
+    width: 0%;
+  }
+
+  .current-item {
+    font-family: 'DM Mono', monospace;
+    font-size: 12px; color: var(--muted);
+    padding: 10px 14px;
+    background: var(--surface2);
+    border-radius: 8px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .current-item .label { color: var(--accent); margin-right: 8px; }
+
+  /* Log */
+  .log-wrap {
+    margin-top: 16px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    max-height: 180px; overflow-y: auto;
+    padding: 12px;
+  }
+  .log-entry {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px; line-height: 1.7;
+    display: flex; gap: 10px;
+  }
+  .log-entry .log-idx { color: var(--muted); min-width: 32px; }
+  .log-entry .log-url { color: var(--muted); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .log-entry .log-alt { color: var(--accent); flex: 2; }
+  .log-entry .log-err { color: var(--error); flex: 2; }
+
+  /* Results section */
+  .results-section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 24px;
+    display: none;
+    animation: fadeUp 0.3s ease both;
+  }
+  .results-section.visible { display: block; }
+  .results-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 20px; flex-wrap: gap;
+  }
+  .results-title {
+    font-family: 'Syne', sans-serif;
+    font-weight: 700; font-size: 18px;
+  }
+  .results-title span { color: var(--accent); }
+
+  .result-table-wrap {
+    border: 1px solid var(--border);
+    border-radius: 10px; overflow: hidden;
+    margin-bottom: 20px;
+  }
+  .result-table-scroll { max-height: 400px; overflow-y: auto; }
+  .result-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .result-table th {
+    text-align: left; padding: 10px 16px;
+    font-family: 'DM Mono', monospace;
+    color: var(--muted); font-weight: 400;
+    font-size: 10px; letter-spacing: 1.5px;
+    text-transform: uppercase;
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; z-index: 1;
+  }
+  .result-table td {
+    padding: 10px 16px;
+    border-top: 1px solid var(--border);
+    vertical-align: top;
+  }
+  .result-table tr:hover td { background: rgba(255,255,255,0.02); }
+  .url-cell {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px; color: var(--muted);
+    max-width: 240px; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap;
+  }
+  .alt-result {
+    color: var(--text); font-size: 13px;
+    line-height: 1.5;
+  }
+  .alt-result.error { color: var(--error); font-size: 11px; font-family: 'DM Mono', monospace; }
+  .copy-btn {
+    background: none; border: 1px solid var(--border);
+    border-radius: 5px; padding: 3px 10px;
+    color: var(--muted); font-size: 11px;
+    cursor: pointer; font-family: 'DM Mono', monospace;
+    transition: all 0.15s; white-space: nowrap;
+  }
+  .copy-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .copy-btn.copied { border-color: var(--accent); color: var(--accent); }
+
+  .thumb { width: 42px; height: 42px; object-fit: cover; border-radius: 5px; background: var(--surface2); display: block; }
+
+  /* Animations */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+  .processing { animation: pulse 1.5s ease infinite; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: var(--surface2); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  /* Toast */
+  .toast {
+    position: fixed; bottom: 28px; right: 28px;
+    background: var(--surface);
+    border: 1px solid var(--accent);
+    border-radius: 10px;
+    padding: 12px 20px;
+    font-size: 13px; color: var(--accent);
+    font-family: 'DM Mono', monospace;
+    z-index: 999;
+    transform: translateY(80px); opacity: 0;
+    transition: all 0.3s;
+    pointer-events: none;
+  }
+  .toast.show { transform: translateY(0); opacity: 1; }
+
+  /* Responsive */
+  @media (max-width: 600px) {
+    .run-options { flex-direction: column; }
+    .progress-stats { gap: 16px; }
+    .stat-val { font-size: 22px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="glow glow-1"></div>
+<div class="glow glow-2"></div>
+
+<div class="wrapper">
+  <header>
+    <div class="logo">Alt<span>Gen</span></div>
+    <div style="display:flex;align-items:center;gap:12px">
+      <div class="badge">POWERED BY CLAUDE AI</div>
+      <a class="gh-link" href="https://github.com/YOUR_USERNAME/altgen" target="_blank">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+        GitHub
+      </a>
+    </div>
+  </header>
+
+  <!-- API Key -->
+  <div class="api-section">
+    <div class="section-label">Anthropic API Key</div>
+    <div class="key-row">
+      <input class="key-input" id="apiKey" type="password" placeholder="sk-ant-api03-..." autocomplete="off">
+      <button class="btn btn-secondary btn-sm" onclick="toggleKey()">Show</button>
+      <button class="btn btn-secondary btn-sm" onclick="saveKey()">Save</button>
+    </div>
+    <div class="key-status" id="keyStatus">Enter your Anthropic API key to get started</div>
+  </div>
+
+  <!-- Upload -->
+  <div class="upload-section">
+    <div class="section-label">Upload CSV</div>
+    <div class="drop-zone" id="dropZone">
+      <input type="file" id="csvFile" accept=".csv" onchange="handleFile(this.files[0])">
+      <span class="drop-icon">📂</span>
+      <div class="drop-title">Drop your CSV here or click to browse</div>
+      <div class="drop-sub">Required columns: <em>image_url</em> &nbsp;+&nbsp; <em>page_url</em></div>
+    </div>
+    <div class="preview-wrap" id="previewWrap">
+      <div class="preview-header">
+        <div class="preview-title">CSV PREVIEW</div>
+        <div class="row-count" id="rowCount">0 rows</div>
+      </div>
+      <div class="table-scroll">
+        <table id="previewTable">
+          <thead><tr><th>#</th><th>Image URL</th><th>Page URL</th><th>Alt Text</th></tr></thead>
+          <tbody id="previewBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Run -->
+  <div class="run-section">
+    <div class="section-label">Generation Settings</div>
+    <div class="run-options">
+      <label class="opt-label">
+        Word Length
+        <select id="wordLen">
+          <option value="8-12">Short (8–12 words)</option>
+          <option value="10-15" selected>Medium (10–15 words)</option>
+          <option value="12-18">Long (12–18 words)</option>
+        </select>
+      </label>
+      <label class="opt-label">
+        Tone
+        <select id="tone">
+          <option value="professional industrial">Professional / Industrial</option>
+          <option value="ecommerce product">E-commerce / Product</option>
+          <option value="technical descriptive">Technical / Descriptive</option>
+          <option value="natural conversational">Natural / Conversational</option>
+        </select>
+      </label>
+      <label class="opt-label">
+        Delay (ms)
+        <input type="number" id="delay" value="800" min="300" max="5000" step="100">
+      </label>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-primary" id="runBtn" onclick="startGeneration()" disabled>
+        ▶ Generate Alt Text
+      </button>
+      <button class="btn btn-secondary btn-sm" id="stopBtn" onclick="stopGeneration()" style="display:none">
+        ⏹ Stop
+      </button>
+      <button class="btn btn-secondary btn-sm" onclick="clearAll()">↺ Reset</button>
+    </div>
+  </div>
+
+  <!-- Progress -->
+  <div class="progress-section" id="progressSection">
+    <div class="section-label">Progress</div>
+    <div class="progress-stats">
+      <div class="stat">
+        <div class="stat-val accent" id="statDone">0</div>
+        <div class="stat-label">COMPLETED</div>
+      </div>
+      <div class="stat">
+        <div class="stat-val" id="statTotal">0</div>
+        <div class="stat-label">TOTAL ROWS</div>
+      </div>
+      <div class="stat">
+        <div class="stat-val warn" id="statErr">0</div>
+        <div class="stat-label">ERRORS</div>
+      </div>
+      <div class="stat">
+        <div class="stat-val" id="statEta">—</div>
+        <div class="stat-label">ETA</div>
+      </div>
+    </div>
+    <div class="progress-bar-wrap">
+      <div class="progress-bar" id="progressBar"></div>
+    </div>
+    <div class="current-item" id="currentItem">
+      <span class="label">IDLE</span> Waiting to start...
+    </div>
+    <div class="log-wrap" id="logWrap"></div>
+  </div>
+
+  <!-- Results -->
+  <div class="results-section" id="resultsSection">
+    <div class="results-header">
+      <div class="results-title">Results <span id="resultCount"></span></div>
+      <div class="btn-row">
+        <button class="btn btn-secondary btn-sm" onclick="downloadCSV()">⬇ Download CSV</button>
+        <button class="btn btn-secondary btn-sm" onclick="copyAll()">⎘ Copy All Alt Texts</button>
+      </div>
+    </div>
+    <div class="result-table-wrap">
+      <div class="result-table-scroll">
+        <table class="result-table">
+          <thead>
+            <tr>
+              <th>IMG</th>
+              <th>Image URL</th>
+              <th>Page Context</th>
+              <th>Generated Alt Text</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="resultBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ─── State ────────────────────────────────────────────────────────────────────
+let csvData = [];
+let results = [];
+let running = false;
+let shouldStop = false;
+
+// ─── API Key ──────────────────────────────────────────────────────────────────
+window.addEventListener('load', () => {
+  const saved = localStorage.getItem('altgen_key');
+  if (saved) {
+    document.getElementById('apiKey').value = saved;
+    document.getElementById('keyStatus').textContent = '✓ Key loaded from browser storage';
+    document.getElementById('keyStatus').className = 'key-status ok';
+  }
+});
+
+function toggleKey() {
+  const el = document.getElementById('apiKey');
+  el.type = el.type === 'password' ? 'text' : 'password';
+}
+
+function saveKey() {
+  const key = document.getElementById('apiKey').value.trim();
+  if (!key.startsWith('sk-ant-')) {
+    document.getElementById('keyStatus').textContent = '✗ Invalid key format — should start with sk-ant-';
+    document.getElementById('keyStatus').className = 'key-status err';
+    return;
+  }
+  localStorage.setItem('altgen_key', key);
+  document.getElementById('keyStatus').textContent = '✓ Key saved to browser storage';
+  document.getElementById('keyStatus').className = 'key-status ok';
+  checkRunnable();
+}
+
+// ─── File Handling ────────────────────────────────────────────────────────────
+const dropZone = document.getElementById('dropZone');
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('drag-over');
+  handleFile(e.dataTransfer.files[0]);
+});
+
+function handleFile(file) {
+  if (!file || !file.name.endsWith('.csv')) { showToast('Please upload a .csv file'); return; }
+  const reader = new FileReader();
+  reader.onload = e => {
+    const rows = parseCSV(e.target.result);
+    if (!rows.length) { showToast('No data found in CSV'); return; }
+
+    // Normalize headers
+    const headers = Object.keys(rows[0]).map(h => h.trim().toLowerCase().replace(/\s+/g, '_'));
+    const imgCol = headers.find(h => h.includes('image'));
+    const pageCol = headers.find(h => h.includes('page'));
+
+    if (!imgCol || !pageCol) {
+      showToast('CSV must have image_url and page_url columns');
+      return;
+    }
+
+    csvData = rows.map(r => {
+      const keys = Object.keys(r);
+      let img = r[keys.find(k => k.toLowerCase().includes('image'))] || '';
+      let page = r[keys.find(k => k.toLowerCase().includes('page'))] || '';
+
+      // Auto-fix swapped columns
+      const imgExt = /\.(jpg|jpeg|png|webp|gif|bmp|svg)(\?.*)?$/i;
+      if (!imgExt.test(img) && imgExt.test(page)) {
+        [img, page] = [page, img];
+      }
+      return { image_url: img.trim(), page_url: page.trim(), alt_text: '' };
+    });
+
+    results = csvData.map(r => ({ ...r }));
+    renderPreview();
+    checkRunnable();
+    showToast(`✓ Loaded ${csvData.length} rows`);
+  };
+  reader.readAsText(file);
+}
+
+function parseCSV(text) {
+  const lines = text.trim().split('\n');
+  const headers = lines[0].split(',').map(h => h.replace(/^"|"$/g, '').trim());
+  return lines.slice(1).filter(l => l.trim()).map(line => {
+    const vals = line.match(/(".*?"|[^,]+|(?<=,)(?=,)|^(?=,)|(?<=,)$)/g) || [];
+    const obj = {};
+    headers.forEach((h, i) => { obj[h] = (vals[i] || '').replace(/^"|"$/g, '').trim(); });
+    return obj;
+  });
+}
+
+function renderPreview() {
+  const tbody = document.getElementById('previewBody');
+  tbody.innerHTML = '';
+  csvData.slice(0, 8).forEach((row, i) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${i + 1}</td>
+      <td title="${row.image_url}">${row.image_url.slice(-50)}</td>
+      <td title="${row.page_url}">${row.page_url.slice(-50)}</td>
+      <td class="pending">—</td>`;
+    tbody.appendChild(tr);
+  });
+  if (csvData.length > 8) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td colspan="4" style="text-align:center;color:var(--muted);font-size:11px;font-family:'DM Mono',monospace">… and ${csvData.length - 8} more rows</td>`;
+    tbody.appendChild(tr);
+  }
+  document.getElementById('rowCount').textContent = `${csvData.length} rows`;
+  document.getElementById('previewWrap').classList.add('visible');
+}
+
+function checkRunnable() {
+  const key = document.getElementById('apiKey').value.trim();
+  document.getElementById('runBtn').disabled = !(key.startsWith('sk-ant-') && csvData.length > 0);
+}
+document.getElementById('apiKey').addEventListener('input', checkRunnable);
+
+// ─── Generation ───────────────────────────────────────────────────────────────
+async function startGeneration() {
+  if (running) return;
+  running = true;
+  shouldStop = false;
+
+  const apiKey = document.getElementById('apiKey').value.trim();
+  const wordLen = document.getElementById('wordLen').value;
+  const tone = document.getElementById('tone').value;
+  const delay = parseInt(document.getElementById('delay').value) || 800;
+
+  results = csvData.map(r => ({ ...r, alt_text: '' }));
+
+  document.getElementById('progressSection').classList.add('visible');
+  document.getElementById('runBtn').disabled = true;
+  document.getElementById('stopBtn').style.display = 'inline-block';
+  document.getElementById('logWrap').innerHTML = '';
+  document.getElementById('statTotal').textContent = results.length;
+  document.getElementById('statDone').textContent = '0';
+  document.getElementById('statErr').textContent = '0';
+  document.getElementById('statEta').textContent = '—';
+
+  let done = 0, errors = 0;
+  const startTime = Date.now();
+
+  for (let i = 0; i < results.length; i++) {
+    if (shouldStop) break;
+
+    const row = results[i];
+    const imgUrl = row.image_url;
+    const pageUrl = row.page_url;
+
+    setCurrentItem(`[${i+1}/${results.length}] ${imgUrl.slice(-70)}`);
+
+    try {
+      const alt = await callClaude(apiKey, imgUrl, pageUrl, wordLen, tone);
+      results[i].alt_text = alt;
+      done++;
+      addLog(i + 1, imgUrl, alt, false);
+    } catch (e) {
+      results[i].alt_text = `[ERROR: ${e.message}]`;
+      errors++;
+      addLog(i + 1, imgUrl, e.message, true);
+    }
+
+    // Update stats
+    document.getElementById('statDone').textContent = done;
+    document.getElementById('statErr').textContent = errors;
+    const pct = Math.round(((i + 1) / results.length) * 100);
+    document.getElementById('progressBar').style.width = pct + '%';
+
+    // ETA
+    const elapsed = (Date.now() - startTime) / 1000;
+    const rate = (i + 1) / elapsed;
+    const remaining = Math.round((results.length - i - 1) / rate);
+    document.getElementById('statEta').textContent = remaining > 0 ? formatTime(remaining) : '—';
+
+    // Update preview table
+    updatePreviewRow(i, results[i].alt_text);
+
+    if (i < results.length - 1) await sleep(delay);
+  }
+
+  running = false;
+  document.getElementById('runBtn').disabled = false;
+  document.getElementById('stopBtn').style.display = 'none';
+  setCurrentItem(shouldStop ? '⏹ Stopped by user' : '✓ Generation complete');
+  renderResults();
+  showToast(shouldStop ? 'Stopped — partial results ready' : `✓ Done! ${done} alt texts generated`);
+}
+
+async function callClaude(apiKey, imageUrl, pageUrl, wordLen, tone) {
+  // Fetch image as base64 via proxy workaround — use URL source
+  const pageContext = extractContext(pageUrl);
+  const [minW, maxW] = wordLen.split('-');
+
+  const prompt = `You are an SEO and accessibility specialist writing alt text for ${tone} product images.
+
+Page context: ${pageContext}
+Page URL: ${pageUrl}
+
+Write a single alt text for the image shown.
+
+Rules:
+- ${minW} to ${maxW} words only
+- Describe the main visual element first (product, material, shape, finish)
+- Integrate the page niche naturally, no keyword stuffing
+- No repeated words
+- Sentence case (capitalize first word only)
+- Do NOT start with "Image of", "Photo of", or "Picture of"
+- No brand names unless clearly visible in image
+- Return ONLY the alt text — no quotes, labels, or explanation`;
+
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true'
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 80,
+      messages: [{
+        role: 'user',
+        content: [
+          {
+            type: 'image',
+            source: { type: 'url', url: imageUrl }
+          },
+          { type: 'text', text: prompt }
+        ]
+      }]
+    })
+  });
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err?.error?.message || `HTTP ${response.status}`);
+  }
+
+  const data = await response.json();
+  return data.content[0].text.trim();
+}
+
+function stopGeneration() {
+  shouldStop = true;
+  showToast('Stopping after current row...');
+}
+
+// ─── UI Helpers ───────────────────────────────────────────────────────────────
+function extractContext(url) {
+  try {
+    const path = new URL(url).pathname;
+    const slug = path.replace(/\.(html|php|asp)$/, '').split('/').filter(Boolean).pop() || '';
+    return slug.replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  } catch { return ''; }
+}
+
+function setCurrentItem(text) {
+  document.getElementById('currentItem').innerHTML = `<span class="label">NOW</span> ${text}`;
+}
+
+function addLog(idx, url, text, isError) {
+  const wrap = document.getElementById('logWrap');
+  const div = document.createElement('div');
+  div.className = 'log-entry';
+  div.innerHTML = `
+    <span class="log-idx">${String(idx).padStart(3, '0')}</span>
+    <span class="log-url">${url.slice(-45)}</span>
+    <span class="${isError ? 'log-err' : 'log-alt'}">${text.slice(0, 80)}</span>`;
+  wrap.appendChild(div);
+  wrap.scrollTop = wrap.scrollHeight;
+}
+
+function updatePreviewRow(idx, altText) {
+  const tbody = document.getElementById('previewBody');
+  const rows = tbody.querySelectorAll('tr');
+  if (rows[idx]) {
+    const altCell = rows[idx].querySelectorAll('td')[3];
+    if (altCell) {
+      altCell.textContent = altText.startsWith('[ERROR') ? '⚠ Error' : altText;
+      altCell.className = altText.startsWith('[ERROR') ? 'error-cell' : 'alt-cell';
+    }
+  }
+}
+
+function renderResults() {
+  const tbody = document.getElementById('resultBody');
+  tbody.innerHTML = '';
+  results.forEach((row, i) => {
+    const isError = row.alt_text.startsWith('[ERROR');
+    const ctx = extractContext(row.page_url);
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><img class="thumb" src="${row.image_url}" onerror="this.style.opacity=0.2" alt=""></td>
+      <td class="url-cell" title="${row.image_url}">${row.image_url.slice(-48)}</td>
+      <td class="url-cell">${ctx}</td>
+      <td><div class="alt-result ${isError ? 'error' : ''}">${row.alt_text}</div></td>
+      <td>${!isError ? `<button class="copy-btn" onclick="copyOne(this, '${row.alt_text.replace(/'/g, "\\'")}')">Copy</button>` : ''}</td>`;
+    tbody.appendChild(tr);
+  });
+  const success = results.filter(r => !r.alt_text.startsWith('[ERROR')).length;
+  document.getElementById('resultCount').textContent = `— ${success} / ${results.length}`;
+  document.getElementById('resultsSection').classList.add('visible');
+  document.getElementById('resultsSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function copyOne(btn, text) {
+  navigator.clipboard.writeText(text).then(() => {
+    btn.textContent = '✓ Copied';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 1500);
+  });
+}
+
+function copyAll() {
+  const texts = results.filter(r => !r.alt_text.startsWith('[ERROR')).map(r => r.alt_text).join('\n');
+  navigator.clipboard.writeText(texts).then(() => showToast('✓ All alt texts copied!'));
+}
+
+function downloadCSV() {
+  const headers = ['image_url', 'page_url', 'alt_text'];
+  const rows = results.map(r => headers.map(h => `"${(r[h] || '').replace(/"/g, '""')}"`).join(','));
+  const csv = [headers.join(','), ...rows].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'alt_text_results.csv';
+  a.click();
+  showToast('✓ CSV downloaded!');
+}
+
+function clearAll() {
+  csvData = []; results = [];
+  document.getElementById('csvFile').value = '';
+  document.getElementById('previewBody').innerHTML = '';
+  document.getElementById('previewWrap').classList.remove('visible');
+  document.getElementById('progressSection').classList.remove('visible');
+  document.getElementById('resultsSection').classList.remove('visible');
+  document.getElementById('logWrap').innerHTML = '';
+  document.getElementById('progressBar').style.width = '0%';
+  document.getElementById('runBtn').disabled = true;
+  showToast('Reset complete');
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+function formatTime(secs) {
+  if (secs < 60) return `${secs}s`;
+  return `${Math.floor(secs/60)}m ${secs % 60}s`;
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2800);
+}
+</script>
+</body>
+</html>
